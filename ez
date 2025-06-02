@@ -1,0 +1,88 @@
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Dense, Input
+from tensorflow.keras.datasets import cifar100
+import numpy as np
+import matplotlib.pyplot as plt
+
+# 1. Učitavanje CIFAR-100 podataka
+(x_train, _), (x_test, _) = cifar100.load_data()
+
+# 2. Normalizacija
+x_train = x_train.astype('float32') / 255.0
+x_test = x_test.astype('float32') / 255.0
+
+# 3. Dodavanje šuma
+noise_factor = 0.1
+x_train_noisy = x_train + noise_factor * np.random.normal(loc=0.0, scale=1.0, size=x_train.shape)
+x_test_noisy = x_test + noise_factor * np.random.normal(loc=0.0, scale=1.0, size=x_test.shape)
+x_train_noisy = np.clip(x_train_noisy, 0., 1.)
+x_test_noisy = np.clip(x_test_noisy, 0., 1.)
+
+# 4. Spljoštavanje (flattening)
+x_train_flat = x_train.reshape((len(x_train), -1))
+x_test_flat = x_test.reshape((len(x_test), -1))
+x_train_noisy_flat = x_train_noisy.reshape((len(x_train_noisy), -1))
+x_test_noisy_flat = x_test_noisy.reshape((len(x_test_noisy), -1))
+
+input_dim = x_train_flat.shape[1]  # 32x32x3 = 3072
+
+# 5. Definiranje autoencodera
+input_layer = Input(shape=(input_dim,))
+encoder = Dense(512, activation='relu')(input_layer)
+encoder = Dense(256, activation='relu')(encoder)
+encoder = Dense(128, activation='relu')(encoder)
+
+decoder = Dense(128, activation='relu')(encoder)
+decoder = Dense(256, activation='relu')(decoder)
+decoder = Dense(input_dim, activation='sigmoid')(decoder)
+
+autoencoder = Model(inputs=input_layer, outputs=decoder)
+autoencoder.compile(optimizer='adam', loss='mse')
+
+# 6. Treniranje modela
+history = autoencoder.fit(
+    x_train_noisy_flat, x_train_flat,
+    epochs=10,
+    batch_size=256,
+    shuffle=True,
+    validation_data=(x_test_noisy_flat, x_test_flat),
+    verbose=1
+)
+
+# 7. Vizualizacija gubitka kroz epohe
+plt.plot(history.history['loss'], label='Trening gubitak')
+plt.plot(history.history['val_loss'], label='Validacijski gubitak')
+plt.xlabel('Epoh')
+plt.ylabel('Gubitak')
+plt.title('Gubitak kroz epohe')
+plt.legend()
+plt.show()
+
+# 8. Rekonstrukcija slika
+reconstructed = autoencoder.predict(x_test_noisy_flat)
+reconstructed_images = reconstructed.reshape((-1, 32, 32, 3))
+
+# 9. Prikaz originalne, noisy i rekonstruirane slike
+n = 10
+plt.figure(figsize=(18, 6))
+for i in range(n):
+    # Noisy
+    ax = plt.subplot(3, n, i + 1)
+    plt.imshow(x_test_noisy[i])
+    plt.title("Noisy")
+    plt.axis("off")
+    
+    # Original
+    ax = plt.subplot(3, n, i + 1 + n)
+    plt.imshow(x_test[i])
+    plt.title("Original")
+    plt.axis("off")
+    
+    # Reconstructed
+    ax = plt.subplot(3, n, i + 1 + 2 * n)
+    plt.imshow(reconstructed_images[i])
+    plt.title("Reconstructed")
+    plt.axis("off")
+
+plt.tight_layout()
+plt.show()
